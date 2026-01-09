@@ -4,8 +4,8 @@
 // @version      2.1.0
 // @description  Script avancé pour one.sigmally.com - Feed ultra-rapide (0.5ms), affichage masse, macros souris
 // @author       SigmallyMod
-// @match        *://one.sigmally.com/*
-// @match        *://sigmally.com/*
+// @match        https://one.sigmally.com/*
+// @match        https://sigmally.com/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_addStyle
@@ -990,3 +990,4 @@
     else window.addEventListener('load', start);
 
 })();
+
