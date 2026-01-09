@@ -1,0 +1,48 @@
+// ==UserScript==
+// @name                'Doublesplit - 999999 in 1
+// @name:ru             'Doublesplit - 999999 в 1
+// @name:uk             'Doublesplit - 999999 в 1
+// @name:ja             'デルタ - 999999 イン 1
+// @name:es             'Doublesplit - 999999 en 1
+// @name:zh-CN          'Doublesplit - 999999 合 1
+// @name:de             'Doublesplit - 999999 in 1
+// @name:ar             'دلتا - 999999 في 1
+// @description         Doublesplit - Agario extension, with zoom, minimap, helpers, adblocker
+// @description:es      Doublesplit - extensión para Agario con zoom, minimapa, ayudas y bloqueador de anuncios
+// @description:ru      Doublesplit — расширение для Agario с зумом, миникартой, помощниками и блокировщиком рекламы
+// @description:zh-CN   Doublesplit - agario 的扩展，带有缩放、小地图、辅助功能和广告拦截器
+// @description:uk      Doublesplit — розширення для Agario із зумом, мінікартою, помічниками та блокувальником реклами
+// @description:tr      Doublesplit - Agario için yakınlaştırma, mini harita, yardımcılar ve reklam engelleyici uzantısı
+// @description:de      Doublesplit – Erweiterung für Agario mit Zoom, Minikarte, Helfern und Werbeblocker
+// @description:ja      Doublesplit - Agario のズーム、ミニマップ、ヘルパー、広告ブロッカー付き拡張機能
+// @description:pl      Doublesplit - rozszerzenie do Agario z powiększeniem, minimapą, pomocnikami i blokadą reklam
+// @description:fr      Doublesplit - extension pour Agario avec zoom, mini-carte, assistants et bloqueur de publicité
+// @description:ar      دلتا - إضافة لـ Agario مع مانع إعلانات
+// @version             {{version}}
+// @namespace           doublesplit.agar
+// @author              neo
+// @icon                https://deltav4.gitlab.io/favicon.ico
+// @match               *://*.agar.io/
+// @run-at              document-start
+// @grant               GM.xmlHttpRequest
+// @grant               GM.registerMenuCommand
+// @grant               window.close
+// @grant               unsafeWindow
+// @license             MPL-2.0
+// @antifeature         ads
+// @source              https://github.com/doublesplit/lite-ext/
+// @supportURL          https://discord.gg/HHmyKW6
+// @require             https://cdnjs.cloudflare.com/ajax/libs/preact/10.21.0/preact.umd.min.js
+// @require             https://cdnjs.cloudflare.com/ajax/libs/preact/10.21.0/hooks.umd.min.js
+// @require             https://cdnjs.cloudflare.com/ajax/libs/preact/10.21.0/compat.umd.min.js
+// ==/UserScript==
+
+/*
+  GREASYFORK VERSION
+
+  en: If this user script does not start, write me a discord
+  ru: Если данное расширение не запускается, напишите мне в дискорд
+  https://discord.gg/HHmyKW6
+ 
+*/
+
