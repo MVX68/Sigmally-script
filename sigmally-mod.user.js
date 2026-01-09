@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Sigmally Mod - Ultra Feed & Mass Display
 // @namespace    https://github.com/sigmally-mod
-// @version      2.0.0
-// @description  Script avancé pour one.sigmally.com - Feed rapide, affichage masse, macros configurables
+// @version      2.1.0
+// @description  Script avancé pour one.sigmally.com - Feed ultra-rapide (0.5ms), affichage masse, macros souris
 // @author       SigmallyMod
 // @match        *://one.sigmally.com/*
 // @match        *://sigmally.com/*
@@ -16,15 +16,10 @@
 (function() {
     'use strict';
 
-    // =====================================================
-    // CONFIGURATION & STORAGE
-    // =====================================================
-
     const CONFIG = {
-        version: '2.0.0',
-        storageKey: 'sigmally_mod_settings',
+        version: '2.1.0',
+        storageKey: 'sigmally_mod_v2',
         defaultSettings: {
-            // Keybindings
             keys: {
                 feed: 'w',
                 rapidFeed: 'e',
@@ -33,148 +28,89 @@
                 tripleSplit: 't',
                 quadSplit: 'r',
                 freeze: 's',
-                toggleMenu: 'Escape',
                 toggleMass: 'm',
-                toggleNames: 'n',
-                toggleSkins: 'k',
-                zoomIn: '+',
+                zoomIn: '=',
                 zoomOut: '-',
                 resetZoom: '0'
             },
-            // Features
-            rapidFeedSpeed: 50,
+            mouse: {
+                rapidFeed: null,
+                split: null,
+                doubleSplit: 1,
+                tripleSplit: null,
+                quadSplit: 2,
+                feed: null
+            },
+            rapidFeedSpeed: 25,
             rapidFeedEnabled: true,
             showMass: true,
-            showNames: true,
-            showSkins: true,
-            massType: 'mass', // 'mass' or 'short'
-            customSkin: '',
-            customName: '',
-            zoomLevel: 1,
-            minZoom: 0.1,
-            maxZoom: 5,
-            zoomStep: 0.1,
-            // Visual
+            massType: 'mass',
             massColor: '#FFFFFF',
             massOutline: true,
             massOutlineColor: '#000000',
             massFontSize: 16,
-            // Minimap
             showMinimap: true,
             minimapSize: 200,
             minimapOpacity: 0.8,
-            // Performance
-            fpsBoost: true,
-            // Menu
-            menuOpacity: 0.95
+            zoomLevel: 1,
+            useKeySimulation: true
         }
     };
 
-    // =====================================================
-    // STORAGE MANAGER
-    // =====================================================
-
-    class Storage {
-        static get(key, defaultValue = null) {
+    // Storage
+    const Storage = {
+        get(key, def = null) {
             try {
                 if (typeof GM_getValue !== 'undefined') {
-                    const val = GM_getValue(key, null);
-                    return val !== null ? val : defaultValue;
+                    const v = GM_getValue(key, null);
+                    return v !== null ? v : def;
                 }
-                const stored = localStorage.getItem(key);
-                return stored ? JSON.parse(stored) : defaultValue;
-            } catch {
-                return defaultValue;
-            }
-        }
-
-        static set(key, value) {
+                const s = localStorage.getItem(key);
+                return s ? JSON.parse(s) : def;
+            } catch { return def; }
+        },
+        set(key, val) {
             try {
-                if (typeof GM_setValue !== 'undefined') {
-                    GM_setValue(key, value);
-                } else {
-                    localStorage.setItem(key, JSON.stringify(value));
-                }
-            } catch (e) {
-                console.error('Storage error:', e);
-            }
+                if (typeof GM_setValue !== 'undefined') GM_setValue(key, val);
+                else localStorage.setItem(key, JSON.stringify(val));
+            } catch {}
         }
-    }
+    };
 
-    // =====================================================
-    // SETTINGS MANAGER
-    // =====================================================
-
+    // Settings
     class Settings {
         constructor() {
             this.data = this.load();
-            this.listeners = new Map();
         }
-
         load() {
             const stored = Storage.get(CONFIG.storageKey);
             return this.merge(CONFIG.defaultSettings, stored || {});
         }
-
-        merge(defaults, stored) {
-            const result = { ...defaults };
-            for (const key in stored) {
-                if (typeof stored[key] === 'object' && !Array.isArray(stored[key]) && stored[key] !== null) {
-                    result[key] = this.merge(defaults[key] || {}, stored[key]);
-                } else {
-                    result[key] = stored[key];
-                }
+        merge(def, stored) {
+            const r = { ...def };
+            for (const k in stored) {
+                if (typeof stored[k] === 'object' && stored[k] && !Array.isArray(stored[k])) {
+                    r[k] = this.merge(def[k] || {}, stored[k]);
+                } else r[k] = stored[k];
             }
-            return result;
+            return r;
         }
-
-        save() {
-            Storage.set(CONFIG.storageKey, this.data);
-        }
-
-        get(path) {
-            return path.split('.').reduce((obj, key) => obj?.[key], this.data);
-        }
-
-        set(path, value) {
-            const keys = path.split('.');
-            const lastKey = keys.pop();
-            const target = keys.reduce((obj, key) => {
-                if (!obj[key]) obj[key] = {};
-                return obj[key];
-            }, this.data);
-            target[lastKey] = value;
-            this.save();
-            this.emit(path, value);
-        }
-
-        on(event, callback) {
-            if (!this.listeners.has(event)) {
-                this.listeners.set(event, []);
-            }
-            this.listeners.get(event).push(callback);
-        }
-
-        emit(event, value) {
-            const callbacks = this.listeners.get(event) || [];
-            callbacks.forEach(cb => cb(value));
-        }
-
-        reset() {
-            this.data = { ...CONFIG.defaultSettings };
+        save() { Storage.set(CONFIG.storageKey, this.data); }
+        get(p) { return p.split('.').reduce((o, k) => o?.[k], this.data); }
+        set(p, v) {
+            const keys = p.split('.'), last = keys.pop();
+            const t = keys.reduce((o, k) => (o[k] = o[k] || {}, o[k]), this.data);
+            t[last] = v;
             this.save();
         }
+        reset() { this.data = JSON.parse(JSON.stringify(CONFIG.defaultSettings)); this.save(); }
     }
 
-    // =====================================================
-    // GAME INTERFACE
-    // =====================================================
-
+    // Game Interface
     class GameInterface {
         constructor() {
             this.ws = null;
             this.canvas = null;
-            this.ctx = null;
             this.camera = { x: 0, y: 0, scale: 1 };
             this.cells = new Map();
             this.myCells = new Set();
@@ -182,182 +118,136 @@
             this.mouseX = 0;
             this.mouseY = 0;
             this.frozen = false;
-            this.frozenPos = { x: 0, y: 0 };
             this.mapBounds = { minX: -7071, minY: -7071, maxX: 7071, maxY: 7071 };
+            this.encryptionKey = null;
+            this.decryptionKey = null;
 
             this.hookWebSocket();
-            this.hookCanvas();
+            this.waitForCanvas();
         }
 
         hookWebSocket() {
             const self = this;
-            const OriginalWebSocket = window.WebSocket;
+            const OrigWS = window.WebSocket;
 
-            window.WebSocket = function(url, protocols) {
-                const ws = protocols ? new OriginalWebSocket(url, protocols) : new OriginalWebSocket(url);
-
-                if (url.includes('sigmally') || url.includes('agar')) {
+            window.WebSocket = function(url, proto) {
+                const ws = proto ? new OrigWS(url, proto) : new OrigWS(url);
+                if (url.includes('sigmally')) {
                     self.ws = ws;
-
-                    ws.addEventListener('message', (event) => {
-                        self.parseMessage(event.data);
-                    });
-
-                    ws.addEventListener('close', () => {
-                        self.myCells.clear();
-                        self.cells.clear();
-                        self.myMass = 0;
-                    });
+                    self.setupWS(ws);
+                    console.log('[Mod] WebSocket connecté');
                 }
-
                 return ws;
             };
+            window.WebSocket.prototype = OrigWS.prototype;
+            Object.assign(window.WebSocket, OrigWS);
+        }
 
-            window.WebSocket.prototype = OriginalWebSocket.prototype;
-            window.WebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
-            window.WebSocket.OPEN = OriginalWebSocket.OPEN;
-            window.WebSocket.CLOSING = OriginalWebSocket.CLOSING;
-            window.WebSocket.CLOSED = OriginalWebSocket.CLOSED;
+        setupWS(ws) {
+            const origSend = ws.send.bind(ws);
+
+            // Intercept outgoing messages to learn the protocol
+            ws.send = (data) => {
+                origSend(data);
+            };
+
+            ws.addEventListener('message', (e) => this.parseMessage(e.data));
+            ws.addEventListener('close', () => {
+                this.myCells.clear();
+                this.cells.clear();
+                this.myMass = 0;
+                console.log('[Mod] WebSocket fermé');
+            });
+        }
+
+        waitForCanvas() {
+            const check = () => {
+                this.canvas = document.querySelector('canvas');
+                if (this.canvas) {
+                    this.hookCanvas();
+                } else {
+                    requestAnimationFrame(check);
+                }
+            };
+            check();
         }
 
         hookCanvas() {
+            const ctx = this.canvas.getContext('2d');
+            if (!ctx) return;
+
             const self = this;
+            const origTranslate = ctx.translate.bind(ctx);
+            const origScale = ctx.scale.bind(ctx);
 
-            const setupCanvas = () => {
-                self.canvas = document.querySelector('canvas');
-                if (self.canvas) {
-                    self.ctx = self.canvas.getContext('2d');
-                    self.hookCanvasContext();
-                    return true;
-                }
-                return false;
-            };
-
-            if (!setupCanvas()) {
-                const observer = new MutationObserver(() => {
-                    if (setupCanvas()) {
-                        observer.disconnect();
-                    }
-                });
-                observer.observe(document.body || document.documentElement, {
-                    childList: true,
-                    subtree: true
-                });
-            }
-        }
-
-        hookCanvasContext() {
-            const self = this;
-            const originalTranslate = this.ctx.translate.bind(this.ctx);
-            const originalScale = this.ctx.scale.bind(this.ctx);
-
-            this.ctx.translate = function(x, y) {
+            ctx.translate = function(x, y) {
                 self.camera.x = -x;
                 self.camera.y = -y;
-                return originalTranslate(x, y);
+                return origTranslate(x, y);
             };
-
-            this.ctx.scale = function(x, y) {
+            ctx.scale = function(x, y) {
                 self.camera.scale = x;
-                return originalScale(x, y);
+                return origScale(x, y);
             };
         }
 
         parseMessage(data) {
             if (!(data instanceof ArrayBuffer)) return;
-
             const view = new DataView(data);
             if (view.byteLength < 1) return;
 
-            const opcode = view.getUint8(0);
-
+            const op = view.getUint8(0);
             try {
-                switch (opcode) {
-                    case 16: // Cell update
-                        this.parseCellUpdate(view);
-                        break;
-                    case 17: // Position update
-                        this.parsePosition(view);
-                        break;
-                    case 32: // Own cell
-                        if (view.byteLength >= 5) {
-                            const cellId = view.getUint32(1, true);
-                            this.myCells.add(cellId);
-                        }
-                        break;
-                    case 64: // Map bounds
-                        this.parseMapBounds(view);
-                        break;
+                if (op === 16) this.parseCellUpdate(view);
+                else if (op === 32 && view.byteLength >= 5) {
+                    this.myCells.add(view.getUint32(1, true));
                 }
-            } catch (e) {
-                // Silently handle parse errors
-            }
+                else if (op === 64) this.parseMapBounds(view);
+            } catch {}
         }
 
         parseCellUpdate(view) {
-            let offset = 1;
+            let off = 1;
+            if (off + 2 > view.byteLength) return;
 
-            // Skip eat records
-            const eatCount = view.getUint16(offset, true);
-            offset += 2;
-            offset += eatCount * 8;
+            const eatCount = view.getUint16(off, true);
+            off += 2 + eatCount * 8;
 
-            // Parse cells
-            while (offset < view.byteLength) {
-                const cellId = view.getUint32(offset, true);
-                offset += 4;
+            while (off + 4 <= view.byteLength) {
+                const id = view.getUint32(off, true);
+                off += 4;
+                if (id === 0) break;
+                if (off + 10 > view.byteLength) break;
 
-                if (cellId === 0) break;
+                const x = view.getInt32(off, true); off += 4;
+                const y = view.getInt32(off, true); off += 4;
+                const size = view.getUint16(off, true); off += 2;
+                const flags = view.getUint8(off); off += 1;
 
-                const x = view.getInt32(offset, true);
-                offset += 4;
-                const y = view.getInt32(offset, true);
-                offset += 4;
-                const size = view.getUint16(offset, true);
-                offset += 2;
+                if (flags & 2) off += 3;
+                if (flags & 4) { while (off < view.byteLength && view.getUint8(off)) off++; off++; }
+                if (flags & 8) { while (off < view.byteLength && view.getUint8(off)) off++; off++; }
 
-                // Skip flags and extra data
-                const flags = view.getUint8(offset);
-                offset += 1;
-
-                if (flags & 2) offset += 3; // RGB
-                if (flags & 4) { // Skin
-                    while (view.getUint8(offset) !== 0) offset++;
-                    offset++;
-                }
-                if (flags & 8) { // Name
-                    while (view.getUint8(offset) !== 0) offset++;
-                    offset++;
-                }
-
-                this.cells.set(cellId, {
-                    id: cellId,
-                    x, y,
-                    size,
+                this.cells.set(id, {
+                    id, x, y, size,
                     mass: Math.floor(size * size / 100),
-                    isMe: this.myCells.has(cellId)
+                    isMe: this.myCells.has(id)
                 });
             }
 
-            // Parse destroyed cells
-            const destroyCount = view.getUint16(offset, true);
-            offset += 2;
-
-            for (let i = 0; i < destroyCount; i++) {
-                const cellId = view.getUint32(offset, true);
-                offset += 4;
-                this.cells.delete(cellId);
-                this.myCells.delete(cellId);
+            if (off + 2 <= view.byteLength) {
+                const dc = view.getUint16(off, true); off += 2;
+                for (let i = 0; i < dc && off + 4 <= view.byteLength; i++) {
+                    const id = view.getUint32(off, true); off += 4;
+                    this.cells.delete(id);
+                    this.myCells.delete(id);
+                }
             }
 
-            // Update my total mass
-            this.updateMyMass();
-        }
-
-        parsePosition(view) {
-            if (view.byteLength >= 9) {
-                this.camera.x = view.getFloat32(1, true);
-                this.camera.y = view.getFloat32(5, true);
+            this.myMass = 0;
+            for (const id of this.myCells) {
+                const c = this.cells.get(id);
+                if (c) this.myMass += c.mass;
             }
         }
 
@@ -372,228 +262,260 @@
             }
         }
 
-        updateMyMass() {
-            this.myMass = 0;
-            for (const cellId of this.myCells) {
-                const cell = this.cells.get(cellId);
-                if (cell) {
-                    this.myMass += cell.mass;
-                }
-            }
+        // Actions via key simulation
+        simulateKey(key, type = 'keydown') {
+            const target = this.canvas || document.body;
+            const code = key === ' ' ? 32 : key.toUpperCase().charCodeAt(0);
+            const event = new KeyboardEvent(type, {
+                key, code: key === ' ' ? 'Space' : 'Key' + key.toUpperCase(),
+                keyCode: code, which: code, charCode: code,
+                bubbles: true, cancelable: true, view: window
+            });
+            target.dispatchEvent(event);
+            document.dispatchEvent(event);
+            window.dispatchEvent(event);
         }
 
-        send(buffer) {
-            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.ws.send(buffer);
-            }
+        keyPress(key) {
+            this.simulateKey(key, 'keydown');
+            setTimeout(() => this.simulateKey(key, 'keyup'), 5);
         }
 
-        feed() {
-            const buffer = new ArrayBuffer(1);
-            new DataView(buffer).setUint8(0, 21);
-            this.send(buffer);
+        // Actions via WebSocket
+        sendWS(buf) {
+            if (this.ws?.readyState === 1) this.ws.send(buf);
         }
 
-        split() {
-            const buffer = new ArrayBuffer(1);
-            new DataView(buffer).setUint8(0, 17);
-            this.send(buffer);
+        feedWS() {
+            const buf = new ArrayBuffer(1);
+            new DataView(buf).setUint8(0, 21);
+            this.sendWS(buf);
         }
 
-        setTarget(x, y) {
-            const buffer = new ArrayBuffer(13);
-            const view = new DataView(buffer);
-            view.setUint8(0, 16);
-            view.setInt32(1, x, true);
-            view.setInt32(5, y, true);
-            view.setUint32(9, 0, true);
-            this.send(buffer);
+        splitWS() {
+            const buf = new ArrayBuffer(1);
+            new DataView(buf).setUint8(0, 17);
+            this.sendWS(buf);
+        }
+
+        // High-level actions
+        feed(useKeys = true) {
+            if (useKeys) this.keyPress('w');
+            else this.feedWS();
+        }
+
+        split(useKeys = true) {
+            if (useKeys) this.keyPress(' ');
+            else this.splitWS();
         }
     }
 
-    // =====================================================
-    // MACRO MANAGER
-    // =====================================================
-
+    // Macro Manager
     class MacroManager {
         constructor(game, settings) {
             this.game = game;
             this.settings = settings;
-            this.rapidFeedInterval = null;
-            this.isRapidFeeding = false;
+            this.feedInterval = null;
+            this.feedLoop = null;
+            this.isFeeding = false;
         }
+
+        get useKeys() { return this.settings.get('useKeySimulation'); }
+
+        feed() { this.game.feed(this.useKeys); }
+        split() { this.game.split(this.useKeys); }
 
         startRapidFeed() {
-            if (this.isRapidFeeding) return;
+            if (this.isFeeding) return;
+            this.isFeeding = true;
 
-            this.isRapidFeeding = true;
-            const speed = this.settings.get('rapidFeedSpeed');
+            const speed = Math.max(0.5, this.settings.get('rapidFeedSpeed'));
+            this.feed();
 
-            this.rapidFeedInterval = setInterval(() => {
-                this.game.feed();
-            }, speed);
-        }
-
-        stopRapidFeed() {
-            this.isRapidFeeding = false;
-            if (this.rapidFeedInterval) {
-                clearInterval(this.rapidFeedInterval);
-                this.rapidFeedInterval = null;
+            if (speed < 4) {
+                // Ultra-fast mode using tight loop
+                let last = performance.now();
+                const loop = () => {
+                    if (!this.isFeeding) return;
+                    const now = performance.now();
+                    if (now - last >= speed) {
+                        this.feed();
+                        last = now;
+                    }
+                    // Use microtask for maximum speed
+                    if (speed < 1) Promise.resolve().then(loop);
+                    else this.feedLoop = setTimeout(loop, 0);
+                };
+                loop();
+            } else {
+                this.feedInterval = setInterval(() => this.feed(), speed);
             }
         }
 
+        stopRapidFeed() {
+            this.isFeeding = false;
+            if (this.feedInterval) { clearInterval(this.feedInterval); this.feedInterval = null; }
+            if (this.feedLoop) { clearTimeout(this.feedLoop); this.feedLoop = null; }
+        }
+
         doubleSplit() {
-            this.game.split();
-            setTimeout(() => this.game.split(), 50);
+            this.split();
+            setTimeout(() => this.split(), 40);
         }
 
         tripleSplit() {
-            this.game.split();
-            setTimeout(() => this.game.split(), 50);
-            setTimeout(() => this.game.split(), 100);
+            this.split();
+            setTimeout(() => this.split(), 40);
+            setTimeout(() => this.split(), 80);
         }
 
         quadSplit() {
-            this.game.split();
-            setTimeout(() => this.game.split(), 50);
-            setTimeout(() => this.game.split(), 100);
-            setTimeout(() => this.game.split(), 150);
+            this.split();
+            setTimeout(() => this.split(), 40);
+            setTimeout(() => this.split(), 80);
+            setTimeout(() => this.split(), 120);
         }
     }
 
-    // =====================================================
-    // RENDERER
-    // =====================================================
-
+    // Renderer
     class Renderer {
         constructor(game, settings) {
             this.game = game;
             this.settings = settings;
-            this.zoomLevel = settings.get('zoomLevel');
+            this.overlay = null;
+            this.ctx = null;
+            this.fps = 0;
+            this.frames = 0;
+            this.lastFps = performance.now();
 
-            this.setupOverlay();
-            this.startRenderLoop();
+            this.init();
         }
 
-        setupOverlay() {
-            this.overlay = document.createElement('canvas');
-            this.overlay.id = 'sigmally-mod-overlay';
-            this.overlay.style.cssText = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                pointer-events: none;
-                z-index: 999;
-            `;
-            document.body.appendChild(this.overlay);
-            this.overlayCtx = this.overlay.getContext('2d');
-
-            this.resizeOverlay();
-            window.addEventListener('resize', () => this.resizeOverlay());
-        }
-
-        resizeOverlay() {
-            this.overlay.width = window.innerWidth;
-            this.overlay.height = window.innerHeight;
-        }
-
-        startRenderLoop() {
-            const render = () => {
-                this.render();
-                requestAnimationFrame(render);
+        init() {
+            const setup = () => {
+                if (document.body) {
+                    this.createOverlay();
+                    this.loop();
+                } else requestAnimationFrame(setup);
             };
-            render();
+            setup();
+        }
+
+        createOverlay() {
+            this.overlay = document.createElement('canvas');
+            this.overlay.id = 'mod-overlay';
+            this.overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999';
+            document.body.appendChild(this.overlay);
+            this.ctx = this.overlay.getContext('2d');
+            this.resize();
+            window.addEventListener('resize', () => this.resize());
+        }
+
+        resize() {
+            if (this.overlay) {
+                this.overlay.width = window.innerWidth;
+                this.overlay.height = window.innerHeight;
+            }
+        }
+
+        loop() {
+            this.render();
+            requestAnimationFrame(() => this.loop());
         }
 
         render() {
-            this.overlayCtx.clearRect(0, 0, this.overlay.width, this.overlay.height);
+            if (!this.ctx) return;
+            this.ctx.clearRect(0, 0, this.overlay.width, this.overlay.height);
 
-            if (this.settings.get('showMass')) {
-                this.renderMass();
+            // FPS
+            this.frames++;
+            const now = performance.now();
+            if (now - this.lastFps >= 1000) {
+                this.fps = this.frames;
+                this.frames = 0;
+                this.lastFps = now;
             }
 
-            if (this.settings.get('showMinimap')) {
-                this.renderMinimap();
-            }
-
+            if (this.settings.get('showMass')) this.renderMass();
+            if (this.settings.get('showMinimap')) this.renderMinimap();
             this.renderStats();
         }
 
         renderMass() {
-            const ctx = this.overlayCtx;
+            const ctx = this.ctx;
             const fontSize = this.settings.get('massFontSize');
-            const massType = this.settings.get('massType');
-            const showOutline = this.settings.get('massOutline');
+            const type = this.settings.get('massType');
+            const outline = this.settings.get('massOutline');
 
-            ctx.font = `bold ${fontSize}px Ubuntu`;
+            ctx.font = `bold ${fontSize}px Ubuntu,sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
 
-            for (const [id, cell] of this.game.cells) {
-                if (cell.isMe) continue;
+            for (const [, cell] of this.game.cells) {
+                if (cell.isMe || cell.mass < 10) continue;
 
-                // Convert world to screen coordinates
-                const screenX = (cell.x - this.game.camera.x) * this.game.camera.scale + this.overlay.width / 2;
-                const screenY = (cell.y - this.game.camera.y) * this.game.camera.scale + this.overlay.height / 2;
+                const sx = (cell.x - this.game.camera.x) * this.game.camera.scale + this.overlay.width / 2;
+                const sy = (cell.y - this.game.camera.y) * this.game.camera.scale + this.overlay.height / 2;
 
-                // Skip if off screen
-                if (screenX < -50 || screenX > this.overlay.width + 50 ||
-                    screenY < -50 || screenY > this.overlay.height + 50) {
-                    continue;
-                }
+                if (sx < -100 || sx > this.overlay.width + 100 || sy < -100 || sy > this.overlay.height + 100) continue;
 
-                const massText = massType === 'short' ?
-                    this.formatMass(cell.mass) : cell.mass.toString();
+                const text = type === 'short' ? this.fmtMass(cell.mass) : cell.mass.toString();
 
-                if (showOutline) {
+                if (outline) {
                     ctx.strokeStyle = this.settings.get('massOutlineColor');
                     ctx.lineWidth = 3;
-                    ctx.strokeText(massText, screenX, screenY);
+                    ctx.strokeText(text, sx, sy);
                 }
-
                 ctx.fillStyle = this.settings.get('massColor');
-                ctx.fillText(massText, screenX, screenY);
+                ctx.fillText(text, sx, sy);
             }
         }
 
-        formatMass(mass) {
-            if (mass >= 1000000) return (mass / 1000000).toFixed(1) + 'M';
-            if (mass >= 1000) return (mass / 1000).toFixed(1) + 'K';
-            return mass.toString();
+        fmtMass(m) {
+            if (m >= 1e6) return (m / 1e6).toFixed(1) + 'M';
+            if (m >= 1e3) return (m / 1e3).toFixed(1) + 'K';
+            return m.toString();
         }
 
         renderMinimap() {
-            const ctx = this.overlayCtx;
+            const ctx = this.ctx;
             const size = this.settings.get('minimapSize');
             const opacity = this.settings.get('minimapOpacity');
-            const padding = 10;
-            const x = this.overlay.width - size - padding;
-            const y = this.overlay.height - size - padding;
+            const pad = 10;
+            const x = this.overlay.width - size - pad;
+            const y = this.overlay.height - size - pad;
 
-            // Background
             ctx.globalAlpha = opacity;
             ctx.fillStyle = '#111';
             ctx.fillRect(x, y, size, size);
-
-            // Border
-            ctx.strokeStyle = '#333';
+            ctx.strokeStyle = '#444';
             ctx.lineWidth = 2;
             ctx.strokeRect(x, y, size, size);
 
-            const mapWidth = this.game.mapBounds.maxX - this.game.mapBounds.minX;
-            const mapHeight = this.game.mapBounds.maxY - this.game.mapBounds.minY;
+            // Grid
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 1;
+            for (let i = 1; i < 5; i++) {
+                const p = i * size / 5;
+                ctx.beginPath();
+                ctx.moveTo(x + p, y);
+                ctx.lineTo(x + p, y + size);
+                ctx.moveTo(x, y + p);
+                ctx.lineTo(x + size, y + p);
+                ctx.stroke();
+            }
 
-            // Draw cells
-            for (const [id, cell] of this.game.cells) {
-                const cellX = x + ((cell.x - this.game.mapBounds.minX) / mapWidth) * size;
-                const cellY = y + ((cell.y - this.game.mapBounds.minY) / mapHeight) * size;
-                const cellSize = Math.max(2, cell.size / 50);
+            const mw = this.game.mapBounds.maxX - this.game.mapBounds.minX;
+            const mh = this.game.mapBounds.maxY - this.game.mapBounds.minY;
+
+            for (const [, cell] of this.game.cells) {
+                const cx = x + ((cell.x - this.game.mapBounds.minX) / mw) * size;
+                const cy = y + ((cell.y - this.game.mapBounds.minY) / mh) * size;
+                const cs = Math.max(2, Math.min(8, cell.size / 100));
 
                 ctx.beginPath();
-                ctx.arc(cellX, cellY, cellSize, 0, Math.PI * 2);
-                ctx.fillStyle = cell.isMe ? '#00FF00' : '#FF0000';
+                ctx.arc(cx, cy, cs, 0, Math.PI * 2);
+                ctx.fillStyle = cell.isMe ? '#0f0' : '#f44';
                 ctx.fill();
             }
 
@@ -601,953 +523,470 @@
         }
 
         renderStats() {
-            const ctx = this.overlayCtx;
-            const padding = 10;
-
-            ctx.font = 'bold 14px Ubuntu';
-            ctx.fillStyle = '#FFF';
+            const ctx = this.ctx;
+            ctx.font = 'bold 14px Ubuntu,sans-serif';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'top';
 
             const stats = [
-                `Mass: ${this.game.myMass}`,
-                `Cells: ${this.game.myCells.size}`,
-                `Zoom: ${(this.game.camera.scale * 100).toFixed(0)}%`
+                `Mass: ${this.fmtMass(this.game.myMass)}`,
+                `Cells: ${this.game.myCells.size}/16`,
+                `FPS: ${this.fps}`
             ];
 
-            ctx.fillStyle = 'rgba(0,0,0,0.5)';
-            ctx.fillRect(padding, padding, 120, stats.length * 20 + 10);
-
-            ctx.fillStyle = '#FFF';
-            stats.forEach((stat, i) => {
-                ctx.fillText(stat, padding + 5, padding + 5 + i * 20);
-            });
-        }
-
-        setZoom(level) {
-            this.zoomLevel = Math.max(
-                this.settings.get('minZoom'),
-                Math.min(this.settings.get('maxZoom'), level)
-            );
-            this.settings.set('zoomLevel', this.zoomLevel);
-
-            // Apply zoom to game canvas
-            if (this.game.canvas) {
-                this.game.canvas.style.transform = `scale(${this.zoomLevel})`;
-                this.game.canvas.style.transformOrigin = 'center center';
-            }
-        }
-
-        zoomIn() {
-            this.setZoom(this.zoomLevel + this.settings.get('zoomStep'));
-        }
-
-        zoomOut() {
-            this.setZoom(this.zoomLevel - this.settings.get('zoomStep'));
-        }
-
-        resetZoom() {
-            this.setZoom(1);
-        }
-    }
-
-    // =====================================================
-    // MENU SYSTEM
-    // =====================================================
-
-    class Menu {
-        constructor(settings, macros, renderer, inputManager) {
-            this.settings = settings;
-            this.macros = macros;
-            this.renderer = renderer;
-            this.inputManager = inputManager;
-            this.isOpen = false;
-            this.activeTab = 'general';
-            this.listeningForKey = null;
-
-            this.createMenu();
-            this.bindEvents();
-        }
-
-        createMenu() {
-            this.container = document.createElement('div');
-            this.container.id = 'sigmally-mod-menu';
-            this.container.innerHTML = this.getMenuHTML();
-            document.body.appendChild(this.container);
-
-            this.addStyles();
-            this.updateUI();
-        }
-
-        getMenuHTML() {
-            return `
-                <div class="sm-menu-backdrop"></div>
-                <div class="sm-menu-container">
-                    <div class="sm-menu-header">
-                        <h2>Sigmally Mod v${CONFIG.version}</h2>
-                        <button class="sm-close-btn">&times;</button>
-                    </div>
-
-                    <div class="sm-menu-tabs">
-                        <button class="sm-tab active" data-tab="general">General</button>
-                        <button class="sm-tab" data-tab="keybinds">Touches</button>
-                        <button class="sm-tab" data-tab="visual">Visuel</button>
-                        <button class="sm-tab" data-tab="macros">Macros</button>
-                    </div>
-
-                    <div class="sm-menu-content">
-                        <!-- General Tab -->
-                        <div class="sm-tab-content active" data-tab="general">
-                            <div class="sm-setting">
-                                <label>
-                                    <input type="checkbox" data-setting="showMass">
-                                    Afficher la masse des joueurs
-                                </label>
-                            </div>
-                            <div class="sm-setting">
-                                <label>
-                                    <input type="checkbox" data-setting="showNames">
-                                    Afficher les noms
-                                </label>
-                            </div>
-                            <div class="sm-setting">
-                                <label>
-                                    <input type="checkbox" data-setting="showSkins">
-                                    Afficher les skins
-                                </label>
-                            </div>
-                            <div class="sm-setting">
-                                <label>
-                                    <input type="checkbox" data-setting="showMinimap">
-                                    Afficher la minimap
-                                </label>
-                            </div>
-                            <div class="sm-setting">
-                                <label>
-                                    <input type="checkbox" data-setting="fpsBoost">
-                                    Mode performance
-                                </label>
-                            </div>
-                            <div class="sm-setting">
-                                <label>Type d'affichage masse:</label>
-                                <select data-setting="massType">
-                                    <option value="mass">Nombre complet</option>
-                                    <option value="short">Abrégé (K/M)</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <!-- Keybinds Tab -->
-                        <div class="sm-tab-content" data-tab="keybinds">
-                            <div class="sm-keybinds-list">
-                                <div class="sm-keybind" data-key="feed">
-                                    <span>Feed (W)</span>
-                                    <button class="sm-key-btn" data-keypath="keys.feed">W</button>
-                                </div>
-                                <div class="sm-keybind" data-key="rapidFeed">
-                                    <span>Feed Rapide</span>
-                                    <button class="sm-key-btn" data-keypath="keys.rapidFeed">E</button>
-                                </div>
-                                <div class="sm-keybind" data-key="split">
-                                    <span>Split</span>
-                                    <button class="sm-key-btn" data-keypath="keys.split">SPACE</button>
-                                </div>
-                                <div class="sm-keybind" data-key="doubleSplit">
-                                    <span>Double Split</span>
-                                    <button class="sm-key-btn" data-keypath="keys.doubleSplit">Q</button>
-                                </div>
-                                <div class="sm-keybind" data-key="tripleSplit">
-                                    <span>Triple Split</span>
-                                    <button class="sm-key-btn" data-keypath="keys.tripleSplit">T</button>
-                                </div>
-                                <div class="sm-keybind" data-key="quadSplit">
-                                    <span>Quad Split (16)</span>
-                                    <button class="sm-key-btn" data-keypath="keys.quadSplit">R</button>
-                                </div>
-                                <div class="sm-keybind" data-key="freeze">
-                                    <span>Freeze Mouse</span>
-                                    <button class="sm-key-btn" data-keypath="keys.freeze">S</button>
-                                </div>
-                                <div class="sm-keybind" data-key="toggleMass">
-                                    <span>Toggle Masse</span>
-                                    <button class="sm-key-btn" data-keypath="keys.toggleMass">M</button>
-                                </div>
-                                <div class="sm-keybind" data-key="zoomIn">
-                                    <span>Zoom +</span>
-                                    <button class="sm-key-btn" data-keypath="keys.zoomIn">+</button>
-                                </div>
-                                <div class="sm-keybind" data-key="zoomOut">
-                                    <span>Zoom -</span>
-                                    <button class="sm-key-btn" data-keypath="keys.zoomOut">-</button>
-                                </div>
-                                <div class="sm-keybind" data-key="resetZoom">
-                                    <span>Reset Zoom</span>
-                                    <button class="sm-key-btn" data-keypath="keys.resetZoom">0</button>
-                                </div>
-                            </div>
-                            <p class="sm-hint">Cliquez sur un bouton puis appuyez sur une touche pour la modifier</p>
-                        </div>
-
-                        <!-- Visual Tab -->
-                        <div class="sm-tab-content" data-tab="visual">
-                            <div class="sm-setting">
-                                <label>Couleur de la masse:</label>
-                                <input type="color" data-setting="massColor" value="#FFFFFF">
-                            </div>
-                            <div class="sm-setting">
-                                <label>
-                                    <input type="checkbox" data-setting="massOutline">
-                                    Contour du texte
-                                </label>
-                            </div>
-                            <div class="sm-setting">
-                                <label>Couleur du contour:</label>
-                                <input type="color" data-setting="massOutlineColor" value="#000000">
-                            </div>
-                            <div class="sm-setting">
-                                <label>Taille police masse: <span id="fontSizeValue">16</span>px</label>
-                                <input type="range" data-setting="massFontSize" min="10" max="30" value="16">
-                            </div>
-                            <div class="sm-setting">
-                                <label>Taille minimap: <span id="minimapSizeValue">200</span>px</label>
-                                <input type="range" data-setting="minimapSize" min="100" max="400" value="200">
-                            </div>
-                            <div class="sm-setting">
-                                <label>Opacité minimap: <span id="minimapOpacityValue">80</span>%</label>
-                                <input type="range" data-setting="minimapOpacity" min="0.1" max="1" step="0.1" value="0.8">
-                            </div>
-                        </div>
-
-                        <!-- Macros Tab -->
-                        <div class="sm-tab-content" data-tab="macros">
-                            <div class="sm-setting">
-                                <label>
-                                    <input type="checkbox" data-setting="rapidFeedEnabled">
-                                    Activer le Feed Rapide
-                                </label>
-                            </div>
-                            <div class="sm-setting">
-                                <label>Vitesse Feed Rapide: <span id="feedSpeedValue">50</span>ms</label>
-                                <input type="range" data-setting="rapidFeedSpeed" min="10" max="200" value="50">
-                            </div>
-                            <div class="sm-macro-info">
-                                <h4>Raccourcis Macros:</h4>
-                                <ul>
-                                    <li><strong>Feed Rapide:</strong> Maintenir la touche</li>
-                                    <li><strong>Double Split:</strong> 2 splits rapides</li>
-                                    <li><strong>Triple Split:</strong> 3 splits rapides</li>
-                                    <li><strong>Quad Split:</strong> 4 splits (16 cells)</li>
-                                    <li><strong>Freeze:</strong> Gèle la position de la souris</li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="sm-menu-footer">
-                        <button class="sm-reset-btn">Réinitialiser</button>
-                        <span class="sm-footer-text">Appuyez sur ESC pour fermer</span>
-                    </div>
-                </div>
-            `;
-        }
-
-        addStyles() {
-            const opacity = this.settings.get('menuOpacity');
-
-            if (typeof GM_addStyle !== 'undefined') {
-                GM_addStyle(this.getCSS(opacity));
-            } else {
-                const style = document.createElement('style');
-                style.textContent = this.getCSS(opacity);
-                document.head.appendChild(style);
-            }
-        }
-
-        getCSS(opacity) {
-            return `
-                #sigmally-mod-menu {
-                    display: none;
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    width: 100%;
-                    height: 100%;
-                    z-index: 10000;
-                    font-family: 'Ubuntu', 'Segoe UI', sans-serif;
-                }
-
-                #sigmally-mod-menu.open {
-                    display: block;
-                }
-
-                .sm-menu-backdrop {
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    width: 100%;
-                    height: 100%;
-                    background: rgba(0, 0, 0, 0.7);
-                }
-
-                .sm-menu-container {
-                    position: absolute;
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%);
-                    width: 500px;
-                    max-width: 90%;
-                    max-height: 80vh;
-                    background: rgba(30, 30, 40, ${opacity});
-                    border-radius: 12px;
-                    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-                    overflow: hidden;
-                    display: flex;
-                    flex-direction: column;
-                }
-
-                .sm-menu-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    padding: 15px 20px;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                }
-
-                .sm-menu-header h2 {
-                    margin: 0;
-                    font-size: 18px;
-                    font-weight: 600;
-                }
-
-                .sm-close-btn {
-                    background: none;
-                    border: none;
-                    color: white;
-                    font-size: 28px;
-                    cursor: pointer;
-                    padding: 0 5px;
-                    line-height: 1;
-                    opacity: 0.8;
-                    transition: opacity 0.2s;
-                }
-
-                .sm-close-btn:hover {
-                    opacity: 1;
-                }
-
-                .sm-menu-tabs {
-                    display: flex;
-                    background: rgba(0, 0, 0, 0.2);
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-                }
-
-                .sm-tab {
-                    flex: 1;
-                    padding: 12px;
-                    background: none;
-                    border: none;
-                    color: rgba(255, 255, 255, 0.6);
-                    font-size: 14px;
-                    cursor: pointer;
-                    transition: all 0.2s;
-                }
-
-                .sm-tab:hover {
-                    background: rgba(255, 255, 255, 0.05);
-                    color: rgba(255, 255, 255, 0.8);
-                }
-
-                .sm-tab.active {
-                    color: white;
-                    background: rgba(255, 255, 255, 0.1);
-                    border-bottom: 2px solid #667eea;
-                }
-
-                .sm-menu-content {
-                    flex: 1;
-                    overflow-y: auto;
-                    padding: 20px;
-                }
-
-                .sm-tab-content {
-                    display: none;
-                }
-
-                .sm-tab-content.active {
-                    display: block;
-                }
-
-                .sm-setting {
-                    margin-bottom: 15px;
-                }
-
-                .sm-setting label {
-                    display: flex;
-                    align-items: center;
-                    gap: 10px;
-                    color: rgba(255, 255, 255, 0.9);
-                    font-size: 14px;
-                    cursor: pointer;
-                }
-
-                .sm-setting input[type="checkbox"] {
-                    width: 18px;
-                    height: 18px;
-                    cursor: pointer;
-                    accent-color: #667eea;
-                }
-
-                .sm-setting input[type="range"] {
-                    width: 100%;
-                    margin-top: 8px;
-                    accent-color: #667eea;
-                }
-
-                .sm-setting input[type="color"] {
-                    width: 50px;
-                    height: 30px;
-                    border: none;
-                    border-radius: 4px;
-                    cursor: pointer;
-                }
-
-                .sm-setting select {
-                    width: 100%;
-                    padding: 8px;
-                    margin-top: 8px;
-                    background: rgba(255, 255, 255, 0.1);
-                    border: 1px solid rgba(255, 255, 255, 0.2);
-                    border-radius: 4px;
-                    color: white;
-                    font-size: 14px;
-                }
-
-                .sm-setting select option {
-                    background: #2a2a3a;
-                }
-
-                .sm-keybinds-list {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 10px;
-                }
-
-                .sm-keybind {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    padding: 10px 15px;
-                    background: rgba(255, 255, 255, 0.05);
-                    border-radius: 6px;
-                }
-
-                .sm-keybind span {
-                    color: rgba(255, 255, 255, 0.9);
-                    font-size: 14px;
-                }
-
-                .sm-key-btn {
-                    min-width: 80px;
-                    padding: 8px 15px;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    border: none;
-                    border-radius: 4px;
-                    color: white;
-                    font-size: 12px;
-                    font-weight: 600;
-                    text-transform: uppercase;
-                    cursor: pointer;
-                    transition: all 0.2s;
-                }
-
-                .sm-key-btn:hover {
-                    transform: scale(1.05);
-                }
-
-                .sm-key-btn.listening {
-                    background: #e74c3c;
-                    animation: pulse 1s infinite;
-                }
-
-                @keyframes pulse {
-                    0%, 100% { opacity: 1; }
-                    50% { opacity: 0.7; }
-                }
-
-                .sm-hint {
-                    margin-top: 15px;
-                    color: rgba(255, 255, 255, 0.5);
-                    font-size: 12px;
-                    font-style: italic;
-                    text-align: center;
-                }
-
-                .sm-macro-info {
-                    background: rgba(255, 255, 255, 0.05);
-                    border-radius: 8px;
-                    padding: 15px;
-                    margin-top: 20px;
-                }
-
-                .sm-macro-info h4 {
-                    margin: 0 0 10px 0;
-                    color: #667eea;
-                    font-size: 14px;
-                }
-
-                .sm-macro-info ul {
-                    margin: 0;
-                    padding-left: 20px;
-                }
-
-                .sm-macro-info li {
-                    color: rgba(255, 255, 255, 0.8);
-                    font-size: 13px;
-                    margin-bottom: 5px;
-                }
-
-                .sm-menu-footer {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    padding: 15px 20px;
-                    background: rgba(0, 0, 0, 0.2);
-                    border-top: 1px solid rgba(255, 255, 255, 0.1);
-                }
-
-                .sm-reset-btn {
-                    padding: 8px 20px;
-                    background: #e74c3c;
-                    border: none;
-                    border-radius: 4px;
-                    color: white;
-                    font-size: 13px;
-                    cursor: pointer;
-                    transition: background 0.2s;
-                }
-
-                .sm-reset-btn:hover {
-                    background: #c0392b;
-                }
-
-                .sm-footer-text {
-                    color: rgba(255, 255, 255, 0.5);
-                    font-size: 12px;
-                }
-
-                /* Scrollbar */
-                .sm-menu-content::-webkit-scrollbar {
-                    width: 8px;
-                }
-
-                .sm-menu-content::-webkit-scrollbar-track {
-                    background: rgba(0, 0, 0, 0.2);
-                }
-
-                .sm-menu-content::-webkit-scrollbar-thumb {
-                    background: rgba(255, 255, 255, 0.2);
-                    border-radius: 4px;
-                }
-
-                .sm-menu-content::-webkit-scrollbar-thumb:hover {
-                    background: rgba(255, 255, 255, 0.3);
-                }
-            `;
-        }
-
-        bindEvents() {
-            // Tab switching
-            this.container.querySelectorAll('.sm-tab').forEach(tab => {
-                tab.addEventListener('click', () => this.switchTab(tab.dataset.tab));
-            });
-
-            // Close button
-            this.container.querySelector('.sm-close-btn').addEventListener('click', () => this.close());
-
-            // Backdrop click
-            this.container.querySelector('.sm-menu-backdrop').addEventListener('click', () => this.close());
-
-            // Reset button
-            this.container.querySelector('.sm-reset-btn').addEventListener('click', () => {
-                if (confirm('Réinitialiser tous les paramètres ?')) {
-                    this.settings.reset();
-                    this.updateUI();
-                }
-            });
-
-            // Settings bindings
-            this.bindSettings();
-
-            // Keybind buttons
-            this.bindKeybindButtons();
-        }
-
-        bindSettings() {
-            // Checkboxes
-            this.container.querySelectorAll('input[type="checkbox"][data-setting]').forEach(input => {
-                input.addEventListener('change', () => {
-                    this.settings.set(input.dataset.setting, input.checked);
-                });
-            });
-
-            // Selects
-            this.container.querySelectorAll('select[data-setting]').forEach(select => {
-                select.addEventListener('change', () => {
-                    this.settings.set(select.dataset.setting, select.value);
-                });
-            });
-
-            // Colors
-            this.container.querySelectorAll('input[type="color"][data-setting]').forEach(input => {
-                input.addEventListener('change', () => {
-                    this.settings.set(input.dataset.setting, input.value);
-                });
-            });
-
-            // Ranges
-            this.container.querySelectorAll('input[type="range"][data-setting]').forEach(input => {
-                input.addEventListener('input', () => {
-                    const value = parseFloat(input.value);
-                    this.settings.set(input.dataset.setting, value);
-                    this.updateRangeDisplay(input);
-                });
-            });
-        }
-
-        bindKeybindButtons() {
-            this.container.querySelectorAll('.sm-key-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    if (this.listeningForKey) {
-                        this.listeningForKey.classList.remove('listening');
-                    }
-
-                    this.listeningForKey = btn;
-                    btn.classList.add('listening');
-                    btn.textContent = '...';
-                });
-            });
-
-            document.addEventListener('keydown', (e) => {
-                if (this.listeningForKey) {
-                    e.preventDefault();
-                    e.stopPropagation();
-
-                    const keyPath = this.listeningForKey.dataset.keypath;
-                    const keyDisplay = this.getKeyDisplay(e);
-                    const keyValue = e.key === ' ' ? ' ' : e.key.toLowerCase();
-
-                    this.settings.set(keyPath, keyValue);
-                    this.listeningForKey.textContent = keyDisplay;
-                    this.listeningForKey.classList.remove('listening');
-                    this.listeningForKey = null;
-
-                    // Update input manager
-                    if (this.inputManager) {
-                        this.inputManager.updateKeyBindings();
-                    }
-                }
-            });
-        }
-
-        getKeyDisplay(e) {
-            const specialKeys = {
-                ' ': 'SPACE',
-                'Escape': 'ESC',
-                'ArrowUp': '↑',
-                'ArrowDown': '↓',
-                'ArrowLeft': '←',
-                'ArrowRight': '→',
-                'Control': 'CTRL',
-                'Shift': 'SHIFT',
-                'Alt': 'ALT'
-            };
-            return specialKeys[e.key] || e.key.toUpperCase();
-        }
-
-        updateUI() {
-            // Update checkboxes
-            this.container.querySelectorAll('input[type="checkbox"][data-setting]').forEach(input => {
-                input.checked = this.settings.get(input.dataset.setting);
-            });
-
-            // Update selects
-            this.container.querySelectorAll('select[data-setting]').forEach(select => {
-                select.value = this.settings.get(select.dataset.setting);
-            });
-
-            // Update colors
-            this.container.querySelectorAll('input[type="color"][data-setting]').forEach(input => {
-                input.value = this.settings.get(input.dataset.setting);
-            });
-
-            // Update ranges
-            this.container.querySelectorAll('input[type="range"][data-setting]').forEach(input => {
-                input.value = this.settings.get(input.dataset.setting);
-                this.updateRangeDisplay(input);
-            });
-
-            // Update keybind buttons
-            this.container.querySelectorAll('.sm-key-btn').forEach(btn => {
-                const keyPath = btn.dataset.keypath;
-                const value = this.settings.get(keyPath);
-                btn.textContent = this.getKeyDisplayFromValue(value);
-            });
-        }
-
-        getKeyDisplayFromValue(value) {
-            const specialKeys = {
-                ' ': 'SPACE',
-                'escape': 'ESC'
-            };
-            return specialKeys[value] || value.toUpperCase();
-        }
-
-        updateRangeDisplay(input) {
-            const setting = input.dataset.setting;
-            const value = input.value;
-
-            const displayMap = {
-                'massFontSize': 'fontSizeValue',
-                'minimapSize': 'minimapSizeValue',
-                'minimapOpacity': 'minimapOpacityValue',
-                'rapidFeedSpeed': 'feedSpeedValue'
-            };
-
-            const displayId = displayMap[setting];
-            if (displayId) {
-                const display = this.container.querySelector(`#${displayId}`);
-                if (display) {
-                    if (setting === 'minimapOpacity') {
-                        display.textContent = Math.round(value * 100);
-                    } else {
-                        display.textContent = value;
-                    }
-                }
-            }
-        }
-
-        switchTab(tabName) {
-            this.activeTab = tabName;
-
-            this.container.querySelectorAll('.sm-tab').forEach(tab => {
-                tab.classList.toggle('active', tab.dataset.tab === tabName);
-            });
-
-            this.container.querySelectorAll('.sm-tab-content').forEach(content => {
-                content.classList.toggle('active', content.dataset.tab === tabName);
-            });
-        }
-
-        toggle() {
-            this.isOpen ? this.close() : this.open();
-        }
-
-        open() {
-            this.isOpen = true;
-            this.container.classList.add('open');
-            this.updateUI();
-        }
-
-        close() {
-            this.isOpen = false;
-            this.container.classList.remove('open');
-
-            if (this.listeningForKey) {
-                this.listeningForKey.classList.remove('listening');
-                this.updateUI();
-                this.listeningForKey = null;
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillRect(10, 10, 120, stats.length * 20 + 10);
+            ctx.fillStyle = '#fff';
+            stats.forEach((s, i) => ctx.fillText(s, 15, 15 + i * 20));
+
+            if (this.game.frozen) {
+                ctx.fillStyle = '#f66';
+                ctx.font = 'bold 16px Ubuntu';
+                ctx.textAlign = 'center';
+                ctx.fillText('FROZEN', this.overlay.width / 2, 30);
             }
         }
     }
 
-    // =====================================================
-    // INPUT MANAGER
-    // =====================================================
-
+    // Input Manager
     class InputManager {
-        constructor(game, settings, macros, renderer) {
+        constructor(game, settings, macros) {
             this.game = game;
             this.settings = settings;
             this.macros = macros;
-            this.renderer = renderer;
             this.menu = null;
-            this.keysPressed = new Set();
+            this.keysDown = new Set();
+            this.mouseDown = new Set();
 
-            this.updateKeyBindings();
-            this.bindEvents();
+            this.bind();
         }
 
-        setMenu(menu) {
-            this.menu = menu;
-        }
+        setMenu(m) { this.menu = m; }
 
-        updateKeyBindings() {
-            this.keyBindings = this.settings.get('keys');
-        }
-
-        bindEvents() {
-            document.addEventListener('keydown', (e) => this.handleKeyDown(e));
-            document.addEventListener('keyup', (e) => this.handleKeyUp(e));
-
-            // Mouse tracking
+        bind() {
+            document.addEventListener('keydown', (e) => this.onKeyDown(e), true);
+            document.addEventListener('keyup', (e) => this.onKeyUp(e), true);
+            document.addEventListener('mousedown', (e) => this.onMouseDown(e), true);
+            document.addEventListener('mouseup', (e) => this.onMouseUp(e), true);
+            document.addEventListener('contextmenu', (e) => this.onContext(e));
             document.addEventListener('mousemove', (e) => {
-                this.game.mouseX = e.clientX;
-                this.game.mouseY = e.clientY;
+                if (!this.game.frozen) {
+                    this.game.mouseX = e.clientX;
+                    this.game.mouseY = e.clientY;
+                }
             });
         }
 
-        handleKeyDown(e) {
-            // Skip if in input field
+        onKeyDown(e) {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-
-            // Skip if listening for keybind
-            if (this.menu && this.menu.listeningForKey) return;
+            if (this.menu?.listening) return;
 
             const key = e.key.toLowerCase();
 
-            // Toggle menu with Escape
             if (e.key === 'Escape') {
                 e.preventDefault();
-                if (this.menu) {
-                    this.menu.toggle();
-                }
+                this.menu?.toggle();
                 return;
             }
 
-            // Skip other actions if menu is open
-            if (this.menu && this.menu.isOpen) return;
+            if (this.menu?.isOpen) return;
+            if (this.keysDown.has(key)) return;
+            this.keysDown.add(key);
 
-            // Prevent duplicate key events
-            if (this.keysPressed.has(key)) return;
-            this.keysPressed.add(key);
+            const keys = this.settings.get('keys');
 
-            // Handle key actions
-            if (key === this.keyBindings.feed || e.key === this.keyBindings.feed) {
-                this.game.feed();
+            if (this.match(key, e.key, keys.feed)) this.macros.feed();
+            if (this.match(key, e.key, keys.rapidFeed) && this.settings.get('rapidFeedEnabled')) this.macros.startRapidFeed();
+            if (this.match(key, e.key, keys.split)) this.macros.split();
+            if (this.match(key, e.key, keys.doubleSplit)) this.macros.doubleSplit();
+            if (this.match(key, e.key, keys.tripleSplit)) this.macros.tripleSplit();
+            if (this.match(key, e.key, keys.quadSplit)) this.macros.quadSplit();
+            if (this.match(key, e.key, keys.freeze)) {
+                this.game.frozen = !this.game.frozen;
             }
+            if (this.match(key, e.key, keys.toggleMass)) {
+                this.settings.set('showMass', !this.settings.get('showMass'));
+            }
+        }
 
-            if ((key === this.keyBindings.rapidFeed || e.key === this.keyBindings.rapidFeed) &&
-                this.settings.get('rapidFeedEnabled')) {
+        onKeyUp(e) {
+            const key = e.key.toLowerCase();
+            this.keysDown.delete(key);
+
+            const keys = this.settings.get('keys');
+            if (this.match(key, e.key, keys.rapidFeed)) this.macros.stopRapidFeed();
+        }
+
+        onMouseDown(e) {
+            if (this.menu?.isOpen) return;
+            const btn = e.button;
+            if (this.mouseDown.has(btn)) return;
+            this.mouseDown.add(btn);
+
+            const mouse = this.settings.get('mouse');
+
+            if (mouse.rapidFeed === btn && this.settings.get('rapidFeedEnabled')) {
+                e.preventDefault();
                 this.macros.startRapidFeed();
             }
+            if (mouse.feed === btn) { e.preventDefault(); this.macros.feed(); }
+            if (mouse.split === btn) { e.preventDefault(); this.macros.split(); }
+            if (mouse.doubleSplit === btn) { e.preventDefault(); this.macros.doubleSplit(); }
+            if (mouse.tripleSplit === btn) { e.preventDefault(); this.macros.tripleSplit(); }
+            if (mouse.quadSplit === btn) { e.preventDefault(); this.macros.quadSplit(); }
+        }
 
-            if (e.key === this.keyBindings.split || key === this.keyBindings.split) {
-                this.game.split();
-            }
+        onMouseUp(e) {
+            const btn = e.button;
+            this.mouseDown.delete(btn);
 
-            if (key === this.keyBindings.doubleSplit) {
-                this.macros.doubleSplit();
-            }
+            const mouse = this.settings.get('mouse');
+            if (mouse.rapidFeed === btn) this.macros.stopRapidFeed();
+        }
 
-            if (key === this.keyBindings.tripleSplit) {
-                this.macros.tripleSplit();
-            }
-
-            if (key === this.keyBindings.quadSplit) {
-                this.macros.quadSplit();
-            }
-
-            if (key === this.keyBindings.freeze) {
-                this.toggleFreeze();
-            }
-
-            if (key === this.keyBindings.toggleMass) {
-                const current = this.settings.get('showMass');
-                this.settings.set('showMass', !current);
-            }
-
-            if (key === this.keyBindings.zoomIn || e.key === this.keyBindings.zoomIn) {
-                this.renderer.zoomIn();
-            }
-
-            if (key === this.keyBindings.zoomOut || e.key === this.keyBindings.zoomOut) {
-                this.renderer.zoomOut();
-            }
-
-            if (key === this.keyBindings.resetZoom) {
-                this.renderer.resetZoom();
+        onContext(e) {
+            const mouse = this.settings.get('mouse');
+            if ([mouse.rapidFeed, mouse.feed, mouse.split, mouse.doubleSplit, mouse.tripleSplit, mouse.quadSplit].includes(2)) {
+                e.preventDefault();
             }
         }
 
-        handleKeyUp(e) {
-            const key = e.key.toLowerCase();
-            this.keysPressed.delete(key);
-
-            // Stop rapid feed when key released
-            if (key === this.keyBindings.rapidFeed || e.key === this.keyBindings.rapidFeed) {
-                this.macros.stopRapidFeed();
-            }
-        }
-
-        toggleFreeze() {
-            this.game.frozen = !this.game.frozen;
-
-            if (this.game.frozen) {
-                this.game.frozenPos = {
-                    x: this.game.mouseX,
-                    y: this.game.mouseY
-                };
-            }
+        match(lower, orig, bind) {
+            return lower === bind?.toLowerCase() || orig === bind;
         }
     }
 
-    // =====================================================
-    // MAIN APPLICATION
-    // =====================================================
+    // Menu
+    class Menu {
+        constructor(settings, macros, input) {
+            this.settings = settings;
+            this.macros = macros;
+            this.input = input;
+            this.isOpen = false;
+            this.listening = null;
+            this.listenType = null;
 
+            this.init();
+        }
+
+        init() {
+            const setup = () => {
+                if (document.body) this.create();
+                else requestAnimationFrame(setup);
+            };
+            setup();
+        }
+
+        create() {
+            this.el = document.createElement('div');
+            this.el.id = 'mod-menu';
+            this.el.innerHTML = this.html();
+            document.body.appendChild(this.el);
+            this.style();
+            this.bind();
+            this.update();
+        }
+
+        html() {
+            return `
+            <div class="mm-bg"></div>
+            <div class="mm-box">
+                <div class="mm-head">
+                    <h2>Sigmally Mod v${CONFIG.version}</h2>
+                    <button class="mm-close">&times;</button>
+                </div>
+                <div class="mm-tabs">
+                    <button class="mm-tab active" data-t="general">General</button>
+                    <button class="mm-tab" data-t="keys">Touches</button>
+                    <button class="mm-tab" data-t="mouse">Souris</button>
+                    <button class="mm-tab" data-t="macros">Macros</button>
+                </div>
+                <div class="mm-content">
+                    <div class="mm-pane active" data-t="general">
+                        <label><input type="checkbox" data-s="showMass"> Afficher masse</label>
+                        <label><input type="checkbox" data-s="showMinimap"> Minimap</label>
+                        <label>Type masse: <select data-s="massType">
+                            <option value="mass">Complet</option>
+                            <option value="short">Abrégé</option>
+                        </select></label>
+                        <label><input type="checkbox" data-s="useKeySimulation"> Simulation touches (désactiver si ça ne marche pas)</label>
+                        <label>Couleur masse: <input type="color" data-s="massColor"></label>
+                        <label><input type="checkbox" data-s="massOutline"> Contour texte</label>
+                        <label>Taille police: <span id="fs">${this.settings.get('massFontSize')}</span>px
+                            <input type="range" data-s="massFontSize" min="10" max="30">
+                        </label>
+                    </div>
+                    <div class="mm-pane" data-t="keys">
+                        ${this.keyBinds().map(k => `<div class="mm-bind"><span>${k.label}</span><button class="mm-key" data-k="${k.path}">${this.keyDisp(this.settings.get(k.path))}</button></div>`).join('')}
+                        <p class="mm-hint">Cliquez puis appuyez sur une touche</p>
+                    </div>
+                    <div class="mm-pane" data-t="mouse">
+                        ${this.mouseBinds().map(m => `<div class="mm-bind"><span>${m.label}</span><button class="mm-mouse" data-m="${m.path}">${this.mouseDisp(this.settings.get(m.path))}</button></div>`).join('')}
+                        <p class="mm-hint">Cliquez puis utilisez un bouton souris. Clic droit pour désactiver.</p>
+                        <p class="mm-legend">0=Gauche | 1=Molette | 2=Droit | 3=Retour | 4=Avancer</p>
+                    </div>
+                    <div class="mm-pane" data-t="macros">
+                        <label><input type="checkbox" data-s="rapidFeedEnabled"> Feed rapide activé</label>
+                        <label>Vitesse: <span id="speed">${this.settings.get('rapidFeedSpeed')}</span>ms
+                            <input type="range" data-s="rapidFeedSpeed" min="0.5" max="100" step="0.5">
+                        </label>
+                        <p class="mm-hint">Min: 0.5ms - Plus bas = plus rapide</p>
+                        <div class="mm-info">
+                            <h4>Macros:</h4>
+                            <ul>
+                                <li><b>Feed Rapide:</b> Maintenir (jusqu'à 0.5ms!)</li>
+                                <li><b>Double Split:</b> 2 splits → 4 cells</li>
+                                <li><b>Triple Split:</b> 3 splits → 8 cells</li>
+                                <li><b>Quad Split:</b> 4 splits → 16 cells</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="mm-foot">
+                    <button class="mm-reset">Réinitialiser</button>
+                    <span>ESC pour fermer</span>
+                </div>
+            </div>`;
+        }
+
+        keyBinds() {
+            return [
+                { label: 'Feed', path: 'keys.feed' },
+                { label: 'Feed Rapide (maintenir)', path: 'keys.rapidFeed' },
+                { label: 'Split', path: 'keys.split' },
+                { label: 'Double Split', path: 'keys.doubleSplit' },
+                { label: 'Triple Split', path: 'keys.tripleSplit' },
+                { label: 'Quad Split', path: 'keys.quadSplit' },
+                { label: 'Freeze', path: 'keys.freeze' },
+                { label: 'Toggle Masse', path: 'keys.toggleMass' }
+            ];
+        }
+
+        mouseBinds() {
+            return [
+                { label: 'Feed', path: 'mouse.feed' },
+                { label: 'Feed Rapide', path: 'mouse.rapidFeed' },
+                { label: 'Split', path: 'mouse.split' },
+                { label: 'Double Split', path: 'mouse.doubleSplit' },
+                { label: 'Triple Split', path: 'mouse.tripleSplit' },
+                { label: 'Quad Split', path: 'mouse.quadSplit' }
+            ];
+        }
+
+        keyDisp(v) {
+            if (!v) return 'Aucune';
+            const m = { ' ': 'SPACE', 'escape': 'ESC' };
+            return m[v.toLowerCase()] || v.toUpperCase();
+        }
+
+        mouseDisp(v) {
+            if (v === null || v === undefined) return 'Désactivé';
+            return ['Gauche', 'Molette', 'Droit', 'Retour', 'Avancer'][v] || `Btn ${v}`;
+        }
+
+        style() {
+            const css = `
+            #mod-menu{display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:100000;font-family:Ubuntu,sans-serif}
+            #mod-menu.open{display:block}
+            .mm-bg{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7)}
+            .mm-box{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:480px;max-width:95%;max-height:85vh;background:rgba(25,25,35,.98);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+            .mm-head{display:flex;justify-content:space-between;align-items:center;padding:15px 20px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
+            .mm-head h2{margin:0;font-size:18px}
+            .mm-close{background:none;border:none;color:#fff;font-size:28px;cursor:pointer;opacity:.8}
+            .mm-close:hover{opacity:1}
+            .mm-tabs{display:flex;background:rgba(0,0,0,.3)}
+            .mm-tab{flex:1;padding:10px;background:none;border:none;border-bottom:2px solid transparent;color:rgba(255,255,255,.6);font-size:13px;cursor:pointer}
+            .mm-tab:hover{color:rgba(255,255,255,.8);background:rgba(255,255,255,.05)}
+            .mm-tab.active{color:#fff;border-bottom-color:#667eea;background:rgba(255,255,255,.1)}
+            .mm-content{flex:1;overflow-y:auto;padding:20px}
+            .mm-pane{display:none}
+            .mm-pane.active{display:block}
+            .mm-pane label{display:flex;align-items:center;gap:10px;color:rgba(255,255,255,.9);font-size:14px;margin-bottom:12px;cursor:pointer}
+            .mm-pane input[type=checkbox]{width:18px;height:18px;accent-color:#667eea}
+            .mm-pane input[type=range]{width:100%;margin-top:5px;accent-color:#667eea}
+            .mm-pane input[type=color]{width:40px;height:25px;border:none;border-radius:4px;cursor:pointer}
+            .mm-pane select{padding:6px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:4px;color:#fff}
+            .mm-pane select option{background:#2a2a3a}
+            .mm-bind{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(255,255,255,.05);border-radius:6px;margin-bottom:8px}
+            .mm-bind span{color:rgba(255,255,255,.9);font-size:14px}
+            .mm-key,.mm-mouse{min-width:90px;padding:8px 12px;background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:4px;color:#fff;font-size:12px;font-weight:600;cursor:pointer}
+            .mm-key:hover,.mm-mouse:hover{transform:scale(1.05)}
+            .mm-key.listening,.mm-mouse.listening{background:#e74c3c;animation:pulse 1s infinite}
+            @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+            .mm-hint{color:rgba(255,255,255,.5);font-size:12px;font-style:italic;margin-top:10px}
+            .mm-legend{color:rgba(255,255,255,.6);font-size:11px;margin-top:8px;padding:8px;background:rgba(255,255,255,.05);border-radius:4px}
+            .mm-info{background:rgba(255,255,255,.05);border-radius:8px;padding:12px;margin-top:15px}
+            .mm-info h4{margin:0 0 8px;color:#667eea;font-size:14px}
+            .mm-info ul{margin:0;padding-left:20px}
+            .mm-info li{color:rgba(255,255,255,.8);font-size:13px;margin-bottom:4px}
+            .mm-foot{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:rgba(0,0,0,.2)}
+            .mm-reset{padding:8px 16px;background:#e74c3c;border:none;border-radius:4px;color:#fff;cursor:pointer}
+            .mm-foot span{color:rgba(255,255,255,.5);font-size:12px}
+            .mm-content::-webkit-scrollbar{width:8px}
+            .mm-content::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:4px}
+            `;
+            const s = document.createElement('style');
+            s.textContent = css;
+            document.head.appendChild(s);
+        }
+
+        bind() {
+            // Tabs
+            this.el.querySelectorAll('.mm-tab').forEach(t => {
+                t.addEventListener('click', () => {
+                    this.el.querySelectorAll('.mm-tab').forEach(x => x.classList.toggle('active', x === t));
+                    this.el.querySelectorAll('.mm-pane').forEach(p => p.classList.toggle('active', p.dataset.t === t.dataset.t));
+                });
+            });
+
+            // Close
+            this.el.querySelector('.mm-close').addEventListener('click', () => this.close());
+            this.el.querySelector('.mm-bg').addEventListener('click', () => this.close());
+
+            // Reset
+            this.el.querySelector('.mm-reset').addEventListener('click', () => {
+                if (confirm('Réinitialiser?')) {
+                    this.settings.reset();
+                    this.update();
+                }
+            });
+
+            // Settings
+            this.el.querySelectorAll('[data-s]').forEach(el => {
+                const s = el.dataset.s;
+                if (el.type === 'checkbox') {
+                    el.addEventListener('change', () => this.settings.set(s, el.checked));
+                } else if (el.type === 'range') {
+                    el.addEventListener('input', () => {
+                        this.settings.set(s, parseFloat(el.value));
+                        if (s === 'massFontSize') this.el.querySelector('#fs').textContent = el.value;
+                        if (s === 'rapidFeedSpeed') this.el.querySelector('#speed').textContent = el.value;
+                    });
+                } else if (el.tagName === 'SELECT') {
+                    el.addEventListener('change', () => this.settings.set(s, el.value));
+                } else if (el.type === 'color') {
+                    el.addEventListener('change', () => this.settings.set(s, el.value));
+                }
+            });
+
+            // Key binds
+            this.el.querySelectorAll('.mm-key').forEach(btn => {
+                btn.addEventListener('click', () => this.startListen(btn, 'key'));
+            });
+
+            // Mouse binds
+            this.el.querySelectorAll('.mm-mouse').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.startListen(btn, 'mouse');
+                });
+                btn.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    // Right-click to disable
+                    this.settings.set(btn.dataset.m, null);
+                    btn.textContent = this.mouseDisp(null);
+                });
+            });
+
+            // Global listeners
+            document.addEventListener('keydown', (e) => {
+                if (this.listening && this.listenType === 'key') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const v = e.key === ' ' ? ' ' : e.key.toLowerCase();
+                    this.settings.set(this.listening.dataset.k, v);
+                    this.listening.textContent = this.keyDisp(v);
+                    this.listening.classList.remove('listening');
+                    this.listening = null;
+                }
+            }, true);
+
+            document.addEventListener('mousedown', (e) => {
+                if (this.listening && this.listenType === 'mouse') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.settings.set(this.listening.dataset.m, e.button);
+                    this.listening.textContent = this.mouseDisp(e.button);
+                    this.listening.classList.remove('listening');
+                    this.listening = null;
+                }
+            }, true);
+        }
+
+        startListen(btn, type) {
+            if (this.listening) this.listening.classList.remove('listening');
+            this.listening = btn;
+            this.listenType = type;
+            btn.classList.add('listening');
+            btn.textContent = '...';
+        }
+
+        update() {
+            this.el.querySelectorAll('[data-s]').forEach(el => {
+                const v = this.settings.get(el.dataset.s);
+                if (el.type === 'checkbox') el.checked = v;
+                else if (el.type === 'range') {
+                    el.value = v;
+                    if (el.dataset.s === 'massFontSize') this.el.querySelector('#fs').textContent = v;
+                    if (el.dataset.s === 'rapidFeedSpeed') this.el.querySelector('#speed').textContent = v;
+                }
+                else if (el.tagName === 'SELECT') el.value = v;
+                else if (el.type === 'color') el.value = v;
+            });
+            this.el.querySelectorAll('.mm-key').forEach(btn => {
+                btn.textContent = this.keyDisp(this.settings.get(btn.dataset.k));
+            });
+            this.el.querySelectorAll('.mm-mouse').forEach(btn => {
+                btn.textContent = this.mouseDisp(this.settings.get(btn.dataset.m));
+            });
+        }
+
+        toggle() { this.isOpen ? this.close() : this.open(); }
+        open() {
+            this.isOpen = true;
+            this.el.classList.add('open');
+            this.update();
+        }
+        close() {
+            this.isOpen = false;
+            this.el.classList.remove('open');
+            if (this.listening) {
+                this.listening.classList.remove('listening');
+                this.listening = null;
+            }
+            this.update();
+        }
+    }
+
+    // Main
     class SigmallyMod {
         constructor() {
             this.settings = new Settings();
             this.game = new GameInterface();
             this.macros = new MacroManager(this.game, this.settings);
             this.renderer = new Renderer(this.game, this.settings);
-            this.inputManager = new InputManager(
-                this.game,
-                this.settings,
-                this.macros,
-                this.renderer
-            );
+            this.input = new InputManager(this.game, this.settings, this.macros);
 
-            // Wait for DOM to initialize menu
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', () => this.initMenu());
-            } else {
-                this.initMenu();
-            }
+            const initMenu = () => {
+                if (document.body) {
+                    this.menu = new Menu(this.settings, this.macros, this.input);
+                    this.input.setMenu(this.menu);
+                } else requestAnimationFrame(initMenu);
+            };
+            initMenu();
 
-            console.log(`%c[Sigmally Mod] v${CONFIG.version} loaded!`,
-                'color: #667eea; font-weight: bold; font-size: 14px;');
-        }
-
-        initMenu() {
-            this.menu = new Menu(
-                this.settings,
-                this.macros,
-                this.renderer,
-                this.inputManager
-            );
-            this.inputManager.setMenu(this.menu);
+            console.log(`%c[Sigmally Mod] v${CONFIG.version} chargé!`, 'color:#667eea;font-weight:bold;font-size:14px');
+            console.log('%c[Mod] ESC pour ouvrir le menu', 'color:#888');
         }
     }
 
-    // =====================================================
-    // INITIALIZATION
-    // =====================================================
-
-    // Wait for page to be ready
-    const init = () => {
-        try {
-            window.SigmallyMod = new SigmallyMod();
-        } catch (e) {
-            console.error('[Sigmally Mod] Initialization error:', e);
-        }
+    // Init
+    const start = () => {
+        try { window.SigmallyMod = new SigmallyMod(); }
+        catch (e) { console.error('[Mod] Erreur:', e); }
     };
 
-    if (document.readyState === 'complete') {
-        init();
-    } else {
-        window.addEventListener('load', init);
-    }
+    if (document.readyState === 'complete') start();
+    else window.addEventListener('load', start);
 
 })();
